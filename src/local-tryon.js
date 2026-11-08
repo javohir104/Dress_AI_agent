@@ -1,7 +1,6 @@
 /**
  * Kingsman Virtual Try-On - Lokal Dvigatel
- * MediaPipe Pose / Canvas Mesh-warp va Segmentatsiya yordamida kiyimni real vaqtda moslash.
- * Oyoq kiyimlar lokal rejimda ko'rsatilmaydi (cheklov).
+ * MediaPipe Pose yordamida kiyimni real vaqtda tabiiy proporsiya bilan kiyintirish.
  */
 
 export class LocalTryOnEngine {
@@ -21,13 +20,16 @@ export class LocalTryOnEngine {
 
     this.poseDetector = null;
     this.landmarks = null;
+    this.smoothedMidX = null;
+    this.smoothedMidY = null;
+    this.smoothedWidth = null;
+    this.smoothedAngle = 0;
 
     this.initPose();
   }
 
   async initPose() {
     try {
-      // MediaPipe Tasks-Vision yuklashga harakat qilamiz
       const { PoseLandmarker, FilesetResolver } = await import('@mediapipe/tasks-vision').catch(() => ({}));
       if (PoseLandmarker && FilesetResolver) {
         const vision = await FilesetResolver.forVisionTasks(
@@ -44,22 +46,19 @@ export class LocalTryOnEngine {
         console.log("MediaPipe PoseLandmarker GPU orqali yuklandi!");
       }
     } catch (e) {
-      console.warn("MediaPipe to'g'ridan-to'g'ri yuklanmadi, geometrik adaptiv rejimga o'tildi:", e.message);
+      console.warn("MediaPipe yuklanmadi, geometrik adaptiv rejim ishlatiladi:", e.message);
     }
   }
 
-  /**
-   * Kiyim rasmini yuklaydi va fonini tozalaydi (oq/och kulrang fonni shaffof qiladi)
-   */
   async setGarment(garment) {
-    if (!garment || garment.subcategory === 'Loufer' || garment.subcategory === 'Tufli' || garment.subcategory === 'Krasofka' || garment.subcategory === 'Barsofka') {
-      this.currentGarment = null;
-      this.garmentImg = null;
-      this.processedGarment = null;
+    if (!garment || ['Loufer', 'Tufli', 'Krasofka', 'Barsofka'].includes(garment.subcategory)) {
+      this.clearGarment();
       return;
     }
 
     this.currentGarment = garment;
+    // Rasmni yuklash
+    const directUrl = garment.image;
     const proxyUrl = `/img?u=${encodeURIComponent(garment.image)}`;
 
     return new Promise((resolve) => {
@@ -71,10 +70,18 @@ export class LocalTryOnEngine {
         resolve();
       };
       img.onerror = () => {
-        console.error("Kiyim rasmini yuklab bo'lmadi:", proxyUrl);
-        resolve();
+        // Fallback proxy
+        const imgFallback = new Image();
+        imgFallback.crossOrigin = 'anonymous';
+        imgFallback.onload = () => {
+          this.garmentImg = imgFallback;
+          this.processedGarment = this.removeBackground(imgFallback);
+          resolve();
+        };
+        imgFallback.onerror = () => resolve();
+        imgFallback.src = proxyUrl;
       };
-      img.src = proxyUrl;
+      img.src = directUrl;
     });
   }
 
@@ -82,10 +89,14 @@ export class LocalTryOnEngine {
     this.currentGarment = null;
     this.garmentImg = null;
     this.processedGarment = null;
+    this.smoothedMidX = null;
+    this.smoothedMidY = null;
+    this.smoothedWidth = null;
+    this.smoothedAngle = 0;
   }
 
   /**
-   * Oq/och fonni yo'qotib, kiyimni shaffof PNG ga aylantirish
+   * Kiyim rasmining oq/och fonini tozalash
    */
   removeBackground(sourceImg) {
     const offCanvas = document.createElement('canvas');
@@ -97,7 +108,7 @@ export class LocalTryOnEngine {
     const imgData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height);
     const data = imgData.data;
 
-    // Burchak piksellardan fon rangini aniqlash (odatda oq yoki juda och kulrang)
+    // Fon rangini aniqlash (burchakdagi piksellar)
     const bgR = data[0];
     const bgG = data[1];
     const bgB = data[2];
@@ -107,15 +118,13 @@ export class LocalTryOnEngine {
       const g = data[i + 1];
       const b = data[i + 2];
 
-      // Oq yoki burchak foniga yaqin ranglarni shaffof qilish
       const diff = Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
-      const isWhite = r > 230 && g > 230 && b > 230;
+      const isVeryLight = r > 238 && g > 238 && b > 238;
 
-      if (isWhite || diff < 35) {
-        data[i + 3] = 0; // Alpha 0
-      } else if (diff < 65 || (r > 215 && g > 215 && b > 215)) {
-        // Yumshoq qirralar (anti-aliasing)
-        data[i + 3] = Math.min(data[i + 3], Math.floor((diff / 65) * 255));
+      if (isVeryLight || diff < 30) {
+        data[i + 3] = 0;
+      } else if (diff < 60 || (r > 220 && g > 220 && b > 220)) {
+        data[i + 3] = Math.min(data[i + 3], Math.floor((diff / 60) * 255));
       }
     }
 
@@ -134,7 +143,6 @@ export class LocalTryOnEngine {
 
   renderLoop = () => {
     if (!this.isRunning) return;
-
     this.render();
     this.calculateFps();
     requestAnimationFrame(this.renderLoop);
@@ -156,32 +164,29 @@ export class LocalTryOnEngine {
     if (!video || video.readyState < 2) return;
 
     if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
     }
 
     const w = canvas.width;
     const h = canvas.height;
 
-    // 1. Asosiy video kadrini tozalash va chizish
+    // Asosiy kadrni tozalash
     ctx.clearRect(0, 0, w, h);
     ctx.drawImage(video, 0, 0, w, h);
 
     if (!this.processedGarment || !this.currentGarment) return;
 
-    // 2. Pose aniqlash
+    // Pose aniqlash
     if (this.poseDetector && video.currentTime > 0) {
       try {
         const results = this.poseDetector.detectForVideo(video, performance.now());
         if (results.landmarks && results.landmarks.length > 0) {
           this.landmarks = results.landmarks[0];
         }
-      } catch (err) {
-        // fallback
-      }
+      } catch (err) {}
     }
 
-    // 3. Kiyimni tana nuqtalariga joylashtirish
     const isLower = ['Shim Pol Klassik', 'Shim', 'Jeans', 'Shalvar'].includes(this.currentGarment.subcategory);
 
     if (this.landmarks) {
@@ -192,122 +197,129 @@ export class LocalTryOnEngine {
   }
 
   /**
-   * MediaPipe Pose nuqtalari bilan kiyintirish (Yelka, Ko'krak, Bel, Tirsak)
+   * MediaPipe Pose nuqtalari bilan kiyintirish
    */
   renderWithLandmarks(ctx, w, h, isLower) {
     const lm = this.landmarks;
-    // 11: chap yelka, 12: o'ng yelka, 23: chap son/bel, 24: o'ng son/bel, 27: to'piq
-    const leftShoulder = lm[11];
-    const rightShoulder = lm[12];
-    const leftHip = lm[23];
-    const rightHip = lm[24];
+    // 11: left_shoulder (foydalanuvchi chap yelkasi, ekranda o'ngda)
+    // 12: right_shoulder (foydalanuvchi o'ng yelkasi, ekranda chapda)
+    const ls = lm[11];
+    const rs = lm[12];
+    const lh = lm[23];
+    const rh = lm[24];
 
-    if (!leftShoulder || !rightShoulder) return;
+    if (!ls || !rs) return;
 
-    const lsX = leftShoulder.x * w;
-    const lsY = leftShoulder.y * h;
-    const rsX = rightShoulder.x * w;
-    const rsY = rightShoulder.y * h;
+    // Koordinatalar: ls.x odatda > rs.x bo'ladi
+    const lsX = ls.x * w;
+    const lsY = ls.y * h;
+    const rsX = rs.x * w;
+    const rsY = rs.y * h;
 
-    const shoulderDist = Math.hypot(lsX - rsX, lsY - rsY);
-    const shoulderMidX = (lsX + rsX) / 2;
-    const shoulderMidY = (lsY + rsY) / 2;
-    const angle = Math.atan2(rsY - lsY, rsX - lsX);
+    // Gorizontal va vertikal farq (to'g'ri burchak hisobi)
+    const dx = lsX - rsX;
+    const dy = lsY - rsY;
+    const rawDist = Math.hypot(dx, dy);
+
+    // Yelka burchagi (odam qiyaligiga moslash, teskari aylanishni oldini olish)
+    let angle = Math.atan2(dy, dx);
+    if (Math.abs(angle) > Math.PI / 4) {
+      angle = 0; // Agar xato hisoblansa, to'g'ri turgan deb olinadi
+    }
+
+    const rawMidX = (lsX + rsX) / 2;
+    const rawMidY = (lsY + rsY) / 2;
+
+    // Smoothing (titrashni yo'qotish)
+    const smoothFactor = 0.35;
+    if (this.smoothedMidX === null) {
+      this.smoothedMidX = rawMidX;
+      this.smoothedMidY = rawMidY;
+      this.smoothedWidth = rawDist;
+      this.smoothedAngle = angle;
+    } else {
+      this.smoothedMidX += (rawMidX - this.smoothedMidX) * smoothFactor;
+      this.smoothedMidY += (rawMidY - this.smoothedMidY) * smoothFactor;
+      this.smoothedWidth += (rawDist - this.smoothedWidth) * smoothFactor;
+      this.smoothedAngle += (angle - this.smoothedAngle) * smoothFactor;
+    }
+
+    const midX = this.smoothedMidX;
+    const midY = this.smoothedMidY;
+    const shoulderDist = this.smoothedWidth;
+    const currentAngle = this.smoothedAngle;
 
     ctx.save();
 
     if (!isLower) {
-      // Ustki kiyim (Upper body)
-      const garmentW = shoulderDist * 2.1;
+      // Ustki kiyim (Kastyum, Kurtka, Nimcha, Futbolka)
+      // Tabiiy proporsiya: yelka kengligidan biroz kengroq (1.5x)
+      const garmentW = shoulderDist * 1.52;
       const aspectRatio = this.processedGarment.height / this.processedGarment.width;
       const garmentH = garmentW * aspectRatio;
 
-      ctx.translate(shoulderMidX, shoulderMidY);
-      ctx.rotate(angle);
+      ctx.translate(midX, midY);
+      ctx.rotate(currentAngle);
 
-      // Yenglar va yelkani to'g'ri o'rnatish
+      // Yoqani yelkalar o'rtasidan bir oz yuqoriga qo'yish (bo'yin chizig'iga)
+      const collarOffset = garmentH * 0.13;
+
       ctx.drawImage(
         this.processedGarment,
         -garmentW / 2,
-        -garmentH * 0.18, // Yelka bo'yni chizig'iga moslash
+        -collarOffset,
         garmentW,
         garmentH
       );
-    } else if (leftHip && rightHip) {
-      // Pastki kiyim (Lower body / Shim)
-      const lhX = leftHip.x * w;
-      const lhY = leftHip.y * h;
-      const rhX = rightHip.x * w;
-      const rhY = rightHip.y * h;
+    } else if (lh && rh) {
+      // Pastki kiyim (Shim, Jeans)
+      const lhX = lh.x * w;
+      const lhY = lh.y * h;
+      const rhX = rh.x * w;
+      const rhY = rh.y * h;
 
-      const hipDist = Math.hypot(lhX - rhX, lhY - rhY);
       const hipMidX = (lhX + rhX) / 2;
       const hipMidY = (lhY + rhY) / 2;
-      const hipAngle = Math.atan2(rhY - lhY, rhX - lhX);
+      const hipDist = Math.hypot(lhX - rhX, lhY - rhY);
 
-      const pantsW = Math.max(hipDist * 2.4, shoulderDist * 1.6);
+      const pantsW = Math.max(hipDist * 2.2, shoulderDist * 1.25);
       const aspectRatio = this.processedGarment.height / this.processedGarment.width;
       const pantsH = pantsW * aspectRatio;
 
       ctx.translate(hipMidX, hipMidY);
-      ctx.rotate(hipAngle);
+      ctx.rotate(currentAngle * 0.5);
 
       ctx.drawImage(
         this.processedGarment,
         -pantsW / 2,
-        -pantsH * 0.1,
+        -pantsH * 0.08,
         pantsW,
         pantsH
       );
     }
 
     ctx.restore();
-
-    // Okklyuziya: Foydalanuvchining boshi va bo'ynini kiyim ustida qoldirish
-    this.applyHeadOcclusion(ctx, w, h);
   }
 
   /**
-   * Agar landmarklar bo'lmasa, markaziy adaptiv hisoblash
+   * Landmarklar yo'q bo'lsa adaptiv kiyintirish
    */
   renderAdaptiveFallback(ctx, w, h, isLower) {
     const centerX = w / 2;
-    const centerY = isLower ? h * 0.65 : h * 0.52;
+    const centerY = isLower ? h * 0.65 : h * 0.55;
 
-    const baseWidth = w * (isLower ? 0.38 : 0.48);
+    const baseWidth = w * (isLower ? 0.35 : 0.45);
     const aspectRatio = this.processedGarment.height / this.processedGarment.width;
     const baseHeight = baseWidth * aspectRatio;
 
     ctx.save();
-    ctx.globalAlpha = 0.95;
     ctx.drawImage(
       this.processedGarment,
       centerX - baseWidth / 2,
-      centerY - baseHeight * 0.35,
+      centerY - baseHeight * 0.25,
       baseWidth,
       baseHeight
     );
-    ctx.restore();
-  }
-
-  /**
-   * Bosh va bo'yin sohasini qayta chizish (okklyuziya effekti)
-   */
-  applyHeadOcclusion(ctx, w, h) {
-    if (!this.landmarks) return;
-    const nose = this.landmarks[0];
-    if (!nose) return;
-
-    const headX = nose.x * w;
-    const headY = nose.y * h;
-    const headRadius = w * 0.11;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(headX, headY, headRadius, 0, Math.PI * 2);
-    ctx.clip();
-    // Faqat bosh sohasini videodan qayta chizamiz
-    ctx.drawImage(this.video, 0, 0, w, h);
     ctx.restore();
   }
 }
