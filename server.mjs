@@ -128,56 +128,76 @@ app.get('/api/status', async (req, res) => {
 
 /**
  * POST /api/tokens
- * 60 s lik Decart client token generatsiyasi
+ * 300 s lik Decart client token generatsiyasi (Avtomatik navbat bilan barcha zaxira kalitlarga o'tish)
  */
 app.post('/api/tokens', async (req, res) => {
-  const active = await getActiveAvailableSlot();
-  if (!active) {
-    return res.status(402).json({
-      error: 'Barcha Decart kalitlarida kredit tugadi',
-      code: 'insufficient_credits'
-    });
+  if (keySlots.length === 0) {
+    return res.status(500).json({ error: 'Serverda Decart kalitlari sozlanmagan' });
   }
 
-  try {
-    const decartRes = await fetch('https://api.decart.ai/v1/client/tokens', {
-      method: 'POST',
-      headers: {
-        'x-api-key': active.slot.key,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        expiresIn: 300,
-        allowedModels: ['lucy-vton-latest', 'lucy-vton-3.6']
-      })
-    });
+  // Barcha mavjud slotlarni aylanib chiqish
+  for (let attempt = 0; attempt < keySlots.length; attempt++) {
+    const slotIndex = (activeSlotIndex + attempt) % keySlots.length;
+    const currentSlot = keySlots[slotIndex];
 
-    if (!decartRes.ok) {
-      const errText = await decartRes.text();
-      console.error('Decart token yaratish xatosi:', decartRes.status, errText);
+    if (currentSlot.isExhausted) continue;
 
-      // Agar kredit tugagan bo'lsa keyingi kalitga o'tish
-      if (decartRes.status === 402 || decartRes.status === 401) {
-        active.slot.isExhausted = true;
-        active.slot.credits = 0;
-        return res.status(402).json({ error: 'Kredit tugadi, qayta urining' });
-      }
-
-      return res.status(decartRes.status).json({ error: 'Token olishda xatolik yuz berdi' });
+    const credits = await checkCredits(slotIndex);
+    if (credits < MIN_CREDITS) {
+      currentSlot.isExhausted = true;
+      console.warn(`[FAILOVER] Slot #${slotIndex + 1} da kredit yetarli emas (${credits}). Keyingisiga o'tilmoqda...`);
+      continue;
     }
 
-    const tokenData = await decartRes.json();
+    try {
+      const decartRes = await fetch('https://api.decart.ai/v1/client/tokens', {
+        method: 'POST',
+        headers: {
+          'x-api-key': currentSlot.key,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          expiresIn: 300,
+          allowedModels: ['lucy-vton-latest', 'lucy-vton-3.6']
+        })
+      });
 
-    res.json({
-      token: tokenData.token || tokenData.apiKey,
-      apiKey: tokenData.apiKey || tokenData.token,
-      expiresAt: tokenData.expiresAt,
-      slot: active.index + 1
-    });
-  } catch (err) {
-    console.error('/api/tokens server xatosi:', err);
-    res.status(500).json({ error: 'Server ichki xatosi' });
+      if (!decartRes.ok) {
+        const errText = await decartRes.text();
+        console.warn(`[WARN] Slot #${slotIndex + 1} token xatosi (${decartRes.status}): ${errText}`);
+
+        if (decartRes.status === 402 || decartRes.status === 401) {
+          currentSlot.isExhausted = true;
+          currentSlot.credits = 0;
+          console.warn(`[FAILOVER] Slot #${slotIndex + 1} kredit tugadi. Keyingisiga o'tilmoqda...`);
+          continue; // Keyingi slotga o'tish!
+        }
+        continue;
+      }
+
+      const tokenData = await decartRes.json();
+      activeSlotIndex = slotIndex; // Muvaffaqiyatli slotni saqlash
+
+      console.log(`[SUCCESS] Slot #${slotIndex + 1} dan token olindi (Qoldiq: ${currentSlot.credits} kredit)`);
+      return res.json({
+        token: tokenData.token || tokenData.apiKey,
+        apiKey: tokenData.apiKey || tokenData.token,
+        expiresAt: tokenData.expiresAt,
+        slot: slotIndex + 1,
+        credits: currentSlot.credits,
+        totalSlots: keySlots.length
+      });
+    } catch (err) {
+      console.error(`Slot #${slotIndex + 1} ulanish xatosi:`, err.message);
+    }
   }
+
+  // Barcha slotlar tekshirildi va tugagan
+  return res.status(402).json({
+    error: 'Barcha Decart kalitlarida kredit tugadi',
+    code: 'insufficient_credits',
+    totalSlots: keySlots.length
+  });
 });
 
 /**
