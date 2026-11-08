@@ -26,7 +26,7 @@ const sessionTimerText = document.getElementById('session-timer-text');
 
 // State
 let localStream = null;
-let currentMode = 'ai'; // 'ai' | 'local'
+let currentMode = 'ai'; // STANDART REJIM: AI
 let currentGarment = null;
 let catalog = [];
 let localEngine = null;
@@ -35,7 +35,7 @@ let realtimeSession = null;
 let sessionSeconds = 0;
 let sessionInterval = null;
 let inactivityTimeout = null;
-const INACTIVITY_LIMIT_MS = 4 * 60 * 1000; // 4 daqiqa harakatsizlik
+const INACTIVITY_LIMIT_MS = 5 * 60 * 1000; // 5 daqiqa
 
 /**
  * 1. Server holatini tekshirish
@@ -48,19 +48,17 @@ async function checkServerStatus() {
 
     if (data.hasKey && data.activeSlot) {
       const active = data.slots.find(s => s.slot === data.activeSlot);
+      const credits = active ? active.credits : 0;
       aiStatusText.textContent = `Decart AI (Slot ${data.activeSlot}/${data.totalSlots})`;
-      creditsPill.textContent = `${active ? active.credits : 0} kredit`;
+      creditsPill.textContent = `${credits} kredit`;
       statusDot.classList.remove('offline');
     } else {
-      aiStatusText.textContent = 'Decart kalit tugagan yoki yo\'q';
+      aiStatusText.textContent = 'Decart kalit ulanmagan';
       creditsPill.textContent = '0 kredit';
       statusDot.classList.add('offline');
-      switchMode('local');
     }
   } catch (err) {
     console.warn('Server status xatosi:', err.message);
-    aiStatusText.textContent = 'Lokal Rejim Faol';
-    statusDot.classList.add('offline');
   }
 }
 
@@ -105,7 +103,7 @@ async function startCamera() {
     resetInactivityTimer();
   } catch (err) {
     console.error('Kamera xatosi:', err);
-    alert('Kameraga ulanishda xatolik yuz berdi. Iltimos brauzer ruxsatini tekshiring.');
+    alert('Kameraga ulanishda xatolik yuz berdi. Iltimos brauzer ruxsatini bering.');
   }
 }
 
@@ -161,15 +159,15 @@ function switchMode(newMode) {
 }
 
 /**
- * 4. Decart AI ulanish va kiyimni almashtirish
+ * 4. Decart AI ulanish va kiyimni ustingizga kiyintirish
  */
 async function applyGarmentAI() {
   if (!localStream || !currentGarment) return;
 
   const promptObj = generatePrompt(currentGarment);
-  promptPreviewText.textContent = promptObj.prompt;
+  promptPreviewText.textContent = `✨ [Decart AI Ulanmoqda...] ${currentGarment.name}`;
 
-  // Agar mavjud faol sessiya bo'lsa, set() orqali o'zgartirish
+  // Agar mavjud sessiya bo'lsa, kiyimni set() bilan bir zumda o'zgartirish
   if (realtimeSession) {
     try {
       await realtimeSession.set({
@@ -177,6 +175,7 @@ async function applyGarmentAI() {
         enhance: false,
         image: currentGarment.image
       });
+      promptPreviewText.textContent = `✨ [AI Faol] ${promptObj.prompt}`;
       console.log('Decart kiyim almashtirildi:', currentGarment.name);
       return;
     } catch (e) {
@@ -185,19 +184,12 @@ async function applyGarmentAI() {
     }
   }
 
-  // Yangi WebRTC sessiya boshlash
+  // Yangi WebRTC ulanish ochish
   try {
-    promptPreviewText.textContent = 'Decart lucy-vton ulanmoqda...';
-
-    // Vaqtinchalik token olish
     const tokenRes = await fetch('/api/tokens', { method: 'POST' });
     if (!tokenRes.ok) {
-      if (tokenRes.status === 402) {
-        alert('Decart kreditlari tugagan, lokal tez rejimga o\'tilmoqda.');
-        switchMode('local');
-        return;
-      }
-      throw new Error('Token olishda xatolik');
+      const err = await tokenRes.json().catch(() => ({}));
+      throw new Error(err.error || 'Token olishda xatolik');
     }
     const tokenData = await tokenRes.json();
 
@@ -222,22 +214,24 @@ async function applyGarmentAI() {
         remoteVideo.srcObject = stream;
         remoteVideo.style.display = 'block';
         cameraVideo.style.display = 'none';
-        console.log('Decart jonli AI video oqimi ulandi!');
+        tryonCanvas.style.display = 'none';
+        promptPreviewText.textContent = `✨ [Jonli AI Video Faol] ${promptObj.prompt}`;
+        console.log('Decart jonli AI try-on videosi ulandi!');
+      },
+      onConnectionChange: (state) => {
+        console.log('Decart holati:', state);
+        if (state === 'generating' || state === 'connected') {
+          promptPreviewText.textContent = `✨ [Jonli AI] Kiyim muvaffaqiyatli kiyildi!`;
+        }
       }
     });
 
-    promptPreviewText.textContent = `[${promptObj.region.toUpperCase()}] ${promptObj.prompt}`;
+    await checkServerStatus();
   } catch (err) {
     console.error('Decart AI ulanish xatosi:', err);
-    promptPreviewText.textContent = `AI xatosi: ${err.message || 'Xatolik yuz berdi'}`;
+    promptPreviewText.textContent = `AI xatosi: ${err.message || 'Qayta urinilmoqda'}`;
     cameraVideo.style.display = 'block';
     remoteVideo.style.display = 'none';
-
-    // Agar kredit sabab bo'lsa zaxira kalitga o'tish
-    if (err.message && (err.message.includes('credits') || err.message.includes('insufficient'))) {
-      await fetch('/api/key-exhausted', { method: 'POST' });
-      await checkServerStatus();
-    }
   }
 }
 
@@ -254,13 +248,13 @@ function disconnectDecartAI() {
 }
 
 /**
- * 5. Mahsulotni tanlash
+ * 5. Mahsulotni tanlash (Kiyib ko'rish)
  */
 async function selectGarment(product) {
   currentGarment = product;
   resetInactivityTimer();
 
-  // Tanlangan kartochkani belgilash
+  // Kartochka belgilanishi
   document.querySelectorAll('.product-card').forEach(card => {
     if (card.dataset.id === String(product.id)) {
       card.classList.add('selected');
@@ -270,13 +264,14 @@ async function selectGarment(product) {
   });
 
   const promptInfo = generatePrompt(product);
-  promptPreviewText.textContent = `[${promptInfo.region.toUpperCase()}] ${promptInfo.prompt}`;
+  promptPreviewText.textContent = `[${promptInfo.region.toUpperCase()}] ${product.name}`;
 
-  // Kamera yoqilmagan bo'lsa yoqish
+  // Kamera yoqilmagan bo'lsa darhol yoqish
   if (!localStream) {
     await startCamera();
   }
 
+  // AI rejimda Decart AI ga yuborish
   if (currentMode === 'ai') {
     await applyGarmentAI();
   } else {
@@ -299,7 +294,7 @@ function clearCurrentGarment() {
 }
 
 /**
- * 6. Taymer va Kredit tejash (4 daqiqa)
+ * 6. Taymer va Kredit tejash
  */
 function startSessionTimer() {
   stopSessionTimer();
@@ -321,9 +316,9 @@ function stopSessionTimer() {
 function resetInactivityTimer() {
   if (inactivityTimeout) clearTimeout(inactivityTimeout);
   inactivityTimeout = setTimeout(() => {
-    console.warn('4 daqiqa kiyim tanlanmadi: kredit tejash maqsadida AI sessiya to\'xtatildi.');
+    console.warn('5 daqiqa kiyim tanlanmadi: kredit tejash maqsadida AI sessiya to\'xtatildi.');
     disconnectDecartAI();
-    alert('Kreditlarni tejash maqsadida AI sessiyasi to\'xtatildi (4 daqiqa harakatsizlik). Davom etish uchun kiyim tanlang.');
+    promptPreviewText.textContent = 'AI sessiya kredit tejash uchun to\'xtatildi. Kiyim tanlang.';
   }, INACTIVITY_LIMIT_MS);
 }
 

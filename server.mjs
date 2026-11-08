@@ -147,7 +147,7 @@ app.post('/api/tokens', async (req, res) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        expiresIn: 60,
+        expiresIn: 300,
         allowedModels: ['lucy-vton-latest', 'lucy-vton-3.6']
       })
     });
