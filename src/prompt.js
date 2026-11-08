@@ -32,7 +32,14 @@ const CATEGORY_MAP = {
   "Loufer": { region: "footwear", type: "leather loafer dress shoes" },
   "Barsofka": { region: "footwear", type: "smart casual slip-on shoes" },
   "Krasofka": { region: "footwear", type: "athletic lifestyle sneakers" },
-  "Tufli": { region: "footwear", type: "classic elegant Oxford leather shoes" }
+  "Tufli": { region: "footwear", type: "classic elegant Oxford leather shoes" },
+
+  // DummyJSON kategoriyalari (Topshiriq 3-band)
+  "mens-shirts": { region: "upper", type: "stylish men's formal button-down shirt" },
+  "mens-shoes": { region: "footwear", type: "men's stylish casual footwear" },
+  "tops": { region: "upper", type: "casual stylish modern top" },
+  "womens-dresses": { region: "upper", type: "elegant high-fashion full-length dress" },
+  "womens-shoes": { region: "footwear", type: "chic women's designer shoes" }
 };
 
 // Nomdagi maxsus detallarni inglizchaga tarjima qilish

@@ -61,6 +61,37 @@ async function fetchAllProducts() {
       };
     }).filter(p => p.image); // Rasmga ega bo'lganlar
 
+    // DummyJSON kiyim kategoriyalarini ham qo'shish (Topshiriq 3-band)
+    const dummyCategories = ['mens-shirts', 'mens-shoes', 'tops', 'womens-dresses', 'womens-shoes'];
+    console.log('\nDummyJSON kiyim kategoriyalari yuklanmoqda...');
+
+    for (const cat of dummyCategories) {
+      try {
+        const dummyRes = await fetch(`https://dummyjson.com/products/category/${cat}`);
+        if (dummyRes.ok) {
+          const dummyData = await dummyRes.json();
+          (dummyData.products || []).forEach(dp => {
+            cleaned.push({
+              id: 10000 + dp.id,
+              unique_id: `dummy-${dp.id}`,
+              name: dp.title,
+              category: 'DummyJSON',
+              subcategory: cat,
+              price: Math.round(dp.price * 12800), // Dollardan so'mga konvertatsiya
+              image: dp.thumbnail || dp.images?.[0] || '',
+              photos: dp.images || [],
+              color: 'Mix',
+              color_code: '#ffffff',
+              sizes: ['S', 'M', 'L', 'XL']
+            });
+          });
+          console.log(`DummyJSON ${cat}: ${dummyData.products?.length || 0} ta mahsulot qo'shildi.`);
+        }
+      } catch (e) {
+        console.warn(`DummyJSON ${cat} yuklashda xatolik:`, e.message);
+      }
+    }
+
     const outPath = path.join(publicDir, 'catalog.json');
     fs.writeFileSync(outPath, JSON.stringify(cleaned, null, 2), 'utf-8');
     console.log(`Katalog saqlandi: ${outPath} (${cleaned.length} mahsulot)`);

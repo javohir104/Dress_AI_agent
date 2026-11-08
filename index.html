@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Kingsman — Jonli primerka (Virtual Try-On)</title>
+  <title>Kingsman — Try-On 2.0 (Jonli Virtual Primerka)</title>
   <link rel="stylesheet" href="/src/style.css" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👔</text></svg>" />
 </head>
@@ -12,41 +12,60 @@
   <header class="app-header">
     <div class="brand">
       <div class="brand-logo">Kingsman</div>
-      <div class="brand-badge">Jonli Primerka</div>
+      <div class="brand-badge">Try-On 2.0</div>
     </div>
 
+    <!-- Markaziy navigatsiya tugmalari -->
+    <div class="header-nav-actions">
+      <button class="nav-action-btn" id="open-stylist-btn">🤖 AI Stilist</button>
+      <button class="nav-action-btn" id="open-outfit-btn">👔 Obrazlar (<span id="outfit-count">0</span>)</button>
+      <button class="nav-action-btn" id="open-fav-btn">❤️ Sevimlilar (<span id="fav-count">0</span>)</button>
+      <button class="nav-action-btn" id="open-gallery-btn">📸 Galereya (<span id="gallery-count">0</span>)</button>
+      <button class="nav-action-btn cart-btn" id="open-cart-btn">🛒 Savat (<span id="cart-count">0</span>)</button>
+    </div>
+
+    <!-- O'ng: Holat, Kredit va Taymerlar -->
     <div class="header-status">
       <div class="status-badge" id="ai-status-badge">
         <div class="status-dot" id="status-dot"></div>
-        <span id="ai-status-text">AI Dvigateli: Tekshirilmoqda...</span>
-        <span class="credits-pill" id="credits-pill">526 kredit</span>
+        <span id="ai-status-text">Decart AI: Tekshirilmoqda...</span>
+        <span class="credits-pill" id="credits-pill">0 kredit</span>
       </div>
 
-      <div class="timer-pill" id="session-timer-pill" title="AI sessiyasi davomiyligi (harakatsizlikda 4 daqiqada uziladi)">
+      <div class="timer-pill" id="session-timer-pill" title="Sessiya taymeri (2 daqiqa kiyim tanlanmasa avtomatik to'xtaydi)">
         ⏱️ <span id="session-timer-text">00:00</span>
+      </div>
+
+      <div class="daily-usage-pill" id="daily-usage-pill" title="Bugun AI ishlatilgan umumiy vaqt">
+        ⚡ Bugun: <span id="daily-seconds-text">0</span>s
       </div>
     </div>
   </header>
 
-  <!-- Main View -->
+  <!-- Tarmoq uzilishi banneri -->
+  <div class="network-alert" id="network-alert" style="display: none;">
+    ⚠️ Internet bilan aloqa uzildi. Iltimos, ulanishni tekshiring!
+  </div>
+
+  <!-- Asosiy maydon -->
   <main class="main-container">
-    <!-- Chap: Kamera va Kiyintirish maydoni -->
+    <!-- Chap: Jonli Kamera va Kiyintirish maydoni -->
     <section class="stage-panel">
       <div class="viewport-container" id="viewport-container">
-        <!-- Kamera va AI Video streamlari -->
+        <!-- Video oqimlari -->
         <video id="camera-video" playsinline muted autoplay></video>
         <video id="remote-video" playsinline autoplay style="display: none;"></video>
         <canvas id="tryon-canvas"></canvas>
 
-        <!-- Ustki overlay (Rejim va FPS) -->
+        <!-- Overlay ma'lumotlari -->
         <div class="viewport-overlay">
           <div class="mode-tag" id="current-mode-tag">✨ AI Rejim (Decart lucy-vton)</div>
           <div class="fps-tag" id="fps-tag" style="display: none;">FPS: 30</div>
         </div>
 
-        <!-- Kamera ruxsati uchun chaqiriq -->
+        <!-- Kamera yoqilmagan holatdagi taklif -->
         <div class="empty-camera-placeholder" id="camera-prompt-box">
-          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
             <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
           </svg>
@@ -54,13 +73,21 @@
           <p>Kamerangizni yoqing va o'ng tarafdan istalgan kiyimni tanlang</p>
           <button class="btn btn-primary" id="start-cam-btn">📷 Kamerani yoqish</button>
         </div>
+
+        <!-- Kamera ruxsati rad etilgandagi xabar -->
+        <div class="camera-error-box" id="camera-error-box" style="display: none;">
+          <div class="error-icon">🚫</div>
+          <h3>Kameraga ruxsat berilmadi</h3>
+          <p>Brauzer sozlamalaridan yoki manzil qatoridagi qulf belgisidan kameraga ruxsat bering.</p>
+          <button class="btn btn-secondary" id="retry-cam-btn">Qayta urinish</button>
+        </div>
       </div>
 
       <!-- Boshqaruv tugmalari -->
       <div class="control-bar">
         <button class="btn btn-secondary" id="toggle-cam-btn">📷 Kamerani to'xtatish</button>
-        <button class="btn btn-secondary" id="snapshot-btn">📸 Snapshot (Saqlash)</button>
-        <button class="btn btn-danger" id="clear-garment-btn">❌ Kiyimni olib tashlash</button>
+        <button class="btn btn-primary" id="snapshot-btn">📸 Snapshot olish</button>
+        <button class="btn btn-danger" id="clear-garment-btn">❌ Kiyimni yechish</button>
 
         <div class="mode-toggle">
           <button class="mode-btn active" id="mode-ai-btn">✨ AI Rejim</button>
@@ -75,16 +102,24 @@
       </div>
     </section>
 
-    <!-- O'ng: Mahsulotlar Katalogi -->
+    <!-- O'ng: Mahsulotlar Katalogi, Qidiruv va Saralash -->
     <section class="catalog-panel">
-      <!-- Qidiruv qatori -->
+      <!-- Qidiruv va Saralash qatori -->
       <div class="catalog-search-bar">
         <input type="text" id="search-input" class="search-input" placeholder="Mahsulot nomi yoki kodi bo'yicha qidiruv..." />
+        
+        <!-- Narx va nom bo'yicha saralash (Topshiriq 3-band) -->
+        <select id="sort-select" class="sort-select">
+          <option value="default">Tavsiya etilgan</option>
+          <option value="price-asc">Narx: Arzondan qimmatga ↑</option>
+          <option value="price-desc">Narx: Qimmatdan arzonga ↓</option>
+          <option value="name-asc">Nom bo'yicha (A-Z)</option>
+        </select>
       </div>
 
-      <!-- Subkategoriyalar chiplari -->
+      <!-- Subkategoriyalar chiplari (DummyJSON + Kingsman) -->
       <div class="chips-container" id="category-chips">
-        <button class="chip active" data-subcat="all">Barchasi (523)</button>
+        <button class="chip active" data-subcat="all">Barchasi (548)</button>
       </div>
 
       <!-- Mahsulotlar to'ri -->
@@ -93,6 +128,147 @@
       </div>
     </section>
   </main>
+
+  <!-- ==================== MODALLAR ==================== -->
+
+  <!-- 1. ❤️ Sevimlilar Modali -->
+  <div class="modal-overlay" id="fav-modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>❤️ Sevimli Kiyimlarim (<span id="fav-modal-count">0</span>)</h3>
+        <button class="modal-close-btn" data-close="fav-modal">✕</button>
+      </div>
+      <div class="modal-body" id="fav-modal-body">
+        <!-- Sevimlilar ro'yxati -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. 📸 Galereya Modali (Snapshotlar + Telegram) -->
+  <div class="modal-overlay" id="gallery-modal" style="display: none;">
+    <div class="modal-content modal-wide">
+      <div class="modal-header">
+        <h3>📸 Olingan Snapshotlar Galereyasi</h3>
+        <button class="modal-close-btn" data-close="gallery-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="gallery-grid" id="gallery-grid">
+          <!-- Snapshotlar joylanadi -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. 👔 Obraz Yig'ish (Outfit Builder) Modali -->
+  <div class="modal-overlay" id="outfit-modal" style="display: none;">
+    <div class="modal-content modal-wide">
+      <div class="modal-header">
+        <h3>👔 Obraz Yig'ish (Outfit Builder)</h3>
+        <button class="modal-close-btn" data-close="outfit-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Obraz Slotlari: Ustki + Shim + Poyabzal -->
+        <div class="outfit-builder-slots">
+          <div class="outfit-slot" id="outfit-slot-upper">
+            <span class="slot-label">🧥 Ustki kiyim</span>
+            <div class="slot-content" id="slot-upper-content">Tanlanmagan</div>
+          </div>
+          <div class="outfit-slot" id="outfit-slot-lower">
+            <span class="slot-label">👖 Pastki kiyim (Shim)</span>
+            <div class="slot-content" id="slot-lower-content">Tanlanmagan</div>
+          </div>
+          <div class="outfit-slot" id="outfit-slot-footwear">
+            <span class="slot-label">👞 Poyabzal</span>
+            <div class="slot-content" id="slot-footwear-content">Tanlanmagan</div>
+          </div>
+        </div>
+
+        <div class="outfit-actions-bar">
+          <input type="text" id="outfit-name-input" class="search-input" placeholder="Obraz nomi (masalan: Ofis klassik, To'y libosi)..." />
+          <div class="outfit-total">Jami narx: <b id="outfit-total-price">0 so'm</b></div>
+          <button class="btn btn-primary" id="save-outfit-btn">💾 Obrazni saqlash</button>
+          <button class="btn btn-secondary" id="add-outfit-to-cart-btn">🛒 Obrazni savatga qo'shish</button>
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid var(--border); margin: 20px 0;" />
+        <h4>Saqlangan Obrazlarim</h4>
+        <div class="saved-outfits-list" id="saved-outfits-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. 🛒 Savat Modali -->
+  <div class="modal-overlay" id="cart-modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>🛒 Savatim (<span id="cart-modal-count">0</span> ta mahsulot)</h3>
+        <button class="modal-close-btn" data-close="cart-modal">✕</button>
+      </div>
+      <div class="modal-body" id="cart-modal-body">
+        <!-- Savat ro'yxati -->
+      </div>
+      <div class="modal-footer">
+        <div class="cart-total-bar">
+          <span>Umumiy to'lov:</span>
+          <b class="cart-total-amount" id="cart-total-amount">0 so'm</b>
+        </div>
+        <button class="btn btn-primary btn-block" id="checkout-btn">✅ Buyurtma berish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. 🤖 AI Stilist Modali (Topshiriq 8-band) -->
+  <div class="modal-overlay" id="stylist-modal" style="display: none;">
+    <div class="modal-content modal-wide">
+      <div class="modal-header">
+        <h3>🤖 Shaxsiy AI Stilist</h3>
+        <button class="modal-close-btn" data-close="stylist-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="color: var(--text-muted); margin-bottom: 12px;">
+          Qayerga bormoqchisiz va byudjetingiz qancha? AI sizga katalogdan 3 ta mos obraz tanlab beradi!
+        </p>
+        <div class="stylist-input-group">
+          <input type="text" id="stylist-prompt-input" class="search-input" placeholder="Masalan: To'yga boraman, byudjet $150 yoki Kuzgi uchrashuv uchun..." />
+          <button class="btn btn-primary" id="ask-stylist-btn">✨ Tavsiya olish</button>
+        </div>
+
+        <div class="stylist-results-grid" id="stylist-results-grid">
+          <!-- AI tavsiya qilgan 3 ta obraz -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. ✈️ Telegramga yuborish Modali (Topshiriq 9-band) -->
+  <div class="modal-overlay" id="telegram-modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>✈️ Snapshotni Telegram Botga Yuborish</h3>
+        <button class="modal-close-btn" data-close="telegram-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Telegram Bot Token:</label>
+          <input type="text" id="tg-token-input" class="search-input" placeholder="123456789:ABCdefGHI..." />
+        </div>
+        <div class="form-group" style="margin-top: 10px;">
+          <label>Chat ID (yoki @username):</label>
+          <input type="text" id="tg-chat-input" class="search-input" placeholder="Masalan: 123456789 yoki @my_channel" />
+        </div>
+        <div class="form-group" style="margin-top: 10px;">
+          <label>Rasm izohi (Caption):</label>
+          <input type="text" id="tg-caption-input" class="search-input" value="👔 Kingsman Try-On 2.0 orqali jonli kiyib ko'rildi!" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary btn-block" id="send-to-telegram-btn">🚀 Telegramga Jo'natish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast xabarnomalar qutisi -->
+  <div class="toast-container" id="toast-container"></div>
 
   <script type="module" src="/src/main.js"></script>
 </body>
