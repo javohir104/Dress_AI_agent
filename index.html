@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kingsman — Jonli primerka (Virtual Try-On)</title>
+  <link rel="stylesheet" href="/src/style.css" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👔</text></svg>" />
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-logo">Kingsman</div>
+      <div class="brand-badge">Jonli Primerka</div>
+    </div>
+
+    <div class="header-status">
+      <div class="status-badge" id="ai-status-badge">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="ai-status-text">AI Dvigateli: Tekshirilmoqda...</span>
+        <span class="credits-pill" id="credits-pill">526 kredit</span>
+      </div>
+
+      <div class="timer-pill" id="session-timer-pill" title="AI sessiyasi davomiyligi (harakatsizlikda 4 daqiqada uziladi)">
+        ⏱️ <span id="session-timer-text">00:00</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main View -->
+  <main class="main-container">
+    <!-- Chap: Kamera va Kiyintirish maydoni -->
+    <section class="stage-panel">
+      <div class="viewport-container" id="viewport-container">
+        <!-- Kamera va AI Video streamlari -->
+        <video id="camera-video" playsinline muted autoplay></video>
+        <video id="remote-video" playsinline autoplay style="display: none;"></video>
+        <canvas id="tryon-canvas"></canvas>
+
+        <!-- Ustki overlay (Rejim va FPS) -->
+        <div class="viewport-overlay">
+          <div class="mode-tag" id="current-mode-tag">✨ AI Rejim (Decart lucy-vton)</div>
+          <div class="fps-tag" id="fps-tag" style="display: none;">FPS: 30</div>
+        </div>
+
+        <!-- Kamera ruxsati uchun chaqiriq -->
+        <div class="empty-camera-placeholder" id="camera-prompt-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+          </svg>
+          <h3>Jonli kiyib ko'rishni boshlang</h3>
+          <p>Kamerangizni yoqing va o'ng tarafdan istalgan kiyimni tanlang</p>
+          <button class="btn btn-primary" id="start-cam-btn">📷 Kamerani yoqish</button>
+        </div>
+      </div>
+
+      <!-- Boshqaruv tugmalari -->
+      <div class="control-bar">
+        <button class="btn btn-secondary" id="toggle-cam-btn">📷 Kamerani to'xtatish</button>
+        <button class="btn btn-secondary" id="snapshot-btn">📸 Snapshot (Saqlash)</button>
+        <button class="btn btn-danger" id="clear-garment-btn">❌ Kiyimni olib tashlash</button>
+
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="mode-ai-btn">✨ AI Rejim</button>
+          <button class="mode-btn" id="mode-local-btn">⚡ Tez Rejim</button>
+        </div>
+      </div>
+
+      <!-- Prompt ko'rsatkichi -->
+      <div class="prompt-preview-box" id="prompt-box">
+        <span>Prompt:</span>
+        <span class="prompt-text" id="prompt-preview-text">Hali kiyim tanlanmadi</span>
+      </div>
+    </section>
+
+    <!-- O'ng: Mahsulotlar Katalogi -->
+    <section class="catalog-panel">
+      <!-- Qidiruv qatori -->
+      <div class="catalog-search-bar">
+        <input type="text" id="search-input" class="search-input" placeholder="Mahsulot nomi yoki kodi bo'yicha qidiruv..." />
+      </div>
+
+      <!-- Subkategoriyalar chiplari -->
+      <div class="chips-container" id="category-chips">
+        <button class="chip active" data-subcat="all">Barchasi (523)</button>
+      </div>
+
+      <!-- Mahsulotlar to'ri -->
+      <div class="products-grid" id="products-grid">
+        <!-- JS orqali kartochkalar joylanadi -->
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
