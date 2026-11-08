@@ -403,6 +403,7 @@ body {
   gap: 16px;
   overflow-y: auto;
   padding-right: 6px;
+  align-content: start;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
@@ -419,19 +420,20 @@ body {
 .product-card {
   background: var(--bg-card);
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   cursor: pointer;
   transition: all 0.25s ease;
   position: relative;
+  min-height: 290px;
 }
 
 .product-card:hover {
   transform: translateY(-3px);
   border-color: var(--border-focus);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
 .product-card.selected {
@@ -442,15 +444,16 @@ body {
 .card-img-wrapper {
   position: relative;
   width: 100%;
-  padding-top: 125%; /* 4:5 aspect ratio */
+  aspect-ratio: 3 / 4;
+  height: 200px;
   background: #181d28;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .card-img {
-  position: absolute;
-  top: 0;
-  left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -458,7 +461,7 @@ body {
 }
 
 .product-card:hover .card-img {
-  transform: scale(1.04);
+  transform: scale(1.05);
 }
 
 .card-body {
@@ -467,6 +470,7 @@ body {
   flex-direction: column;
   gap: 6px;
   flex: 1;
+  background: rgba(18, 22, 31, 0.85);
 }
 
 .card-cat {
@@ -474,18 +478,19 @@ body {
   color: var(--gold);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  font-weight: 600;
 }
 
 .card-title {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-main);
-  line-height: 1.3;
+  line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  height: 34px;
+  min-height: 32px;
 }
 
 .card-footer {
@@ -493,12 +498,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .card-price {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--gold-light);
 }
@@ -507,12 +512,15 @@ body {
   background: rgba(197, 160, 89, 0.15);
   color: var(--gold);
   border: 1px solid var(--border);
-  padding: 4px 10px;
+  padding: 5px 10px;
   border-radius: 6px;
   font-size: 11px;
   font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
+.try-btn:hover,
 .product-card.selected .try-btn {
   background: var(--gold);
   color: #0b0d11;

@@ -1,3 +1,4 @@
+import { createDecartClient, models } from '@decartai/sdk';
 import { LocalTryOnEngine } from './local-tryon.js';
 import { generatePrompt } from './prompt.js';
 
@@ -34,7 +35,7 @@ let realtimeSession = null;
 let sessionSeconds = 0;
 let sessionInterval = null;
 let inactivityTimeout = null;
-const INACTIVITY_LIMIT_MS = 4 * 60 * 1000; // 4 daqiqa
+const INACTIVITY_LIMIT_MS = 4 * 60 * 1000; // 4 daqiqa harakatsizlik
 
 /**
  * 1. Server holatini tekshirish
@@ -54,7 +55,6 @@ async function checkServerStatus() {
       aiStatusText.textContent = 'Decart kalit tugagan yoki yo\'q';
       creditsPill.textContent = '0 kredit';
       statusDot.classList.add('offline');
-      // Avtomatik lokal rejimga o'tish
       switchMode('local');
     }
   } catch (err) {
@@ -96,8 +96,9 @@ async function startCamera() {
 
     if (currentMode === 'local') {
       localEngine.start();
+      if (currentGarment) localEngine.setGarment(currentGarment);
     } else if (currentGarment) {
-      await connectDecartAI();
+      await applyGarmentAI();
     }
 
     startSessionTimer();
@@ -134,16 +135,21 @@ function switchMode(newMode) {
     currentModeTag.textContent = '✨ AI Rejim (Decart lucy-vton)';
     fpsTag.style.display = 'none';
     tryonCanvas.style.display = 'none';
-    remoteVideo.style.display = 'block';
 
     if (localEngine) localEngine.stop();
-    if (localStream && currentGarment) connectDecartAI();
+    if (localStream && currentGarment) {
+      applyGarmentAI();
+    } else {
+      cameraVideo.style.display = 'block';
+      remoteVideo.style.display = 'none';
+    }
   } else {
     modeLocalBtn.classList.add('active');
     modeAiBtn.classList.remove('active');
     currentModeTag.textContent = '⚡ Tez Rejim (Lokal MediaPipe)';
     fpsTag.style.display = 'block';
     tryonCanvas.style.display = 'block';
+    cameraVideo.style.display = 'block';
     remoteVideo.style.display = 'none';
 
     disconnectDecartAI();
@@ -155,15 +161,35 @@ function switchMode(newMode) {
 }
 
 /**
- * 4. Decart AI WebRTC ulanish
+ * 4. Decart AI ulanish va kiyimni almashtirish
  */
-async function connectDecartAI() {
+async function applyGarmentAI() {
   if (!localStream || !currentGarment) return;
 
+  const promptObj = generatePrompt(currentGarment);
+  promptPreviewText.textContent = promptObj.prompt;
+
+  // Agar mavjud faol sessiya bo'lsa, set() orqali o'zgartirish
+  if (realtimeSession) {
+    try {
+      await realtimeSession.set({
+        prompt: promptObj.prompt,
+        enhance: false,
+        image: currentGarment.image
+      });
+      console.log('Decart kiyim almashtirildi:', currentGarment.name);
+      return;
+    } catch (e) {
+      console.warn('Decart session.set xatosi, qayta ulaniladi:', e);
+      disconnectDecartAI();
+    }
+  }
+
+  // Yangi WebRTC sessiya boshlash
   try {
     promptPreviewText.textContent = 'Decart lucy-vton ulanmoqda...';
 
-    // 1. Yangi client token olish
+    // Vaqtinchalik token olish
     const tokenRes = await fetch('/api/tokens', { method: 'POST' });
     if (!tokenRes.ok) {
       if (tokenRes.status === 402) {
@@ -175,27 +201,14 @@ async function connectDecartAI() {
     }
     const tokenData = await tokenRes.json();
 
-    // 2. Decart SDK import
-    const { createDecartClient, models } = await import('@decartai/sdk').catch(() => ({}));
-
-    if (!createDecartClient) {
-      console.warn('Decart SDK topilmadi, lokal rejim ishlatiladi');
-      switchMode('local');
-      return;
-    }
-
     decartClient = createDecartClient({
       apiKey: tokenData.apiKey || tokenData.token
     });
 
-    const promptObj = generatePrompt(currentGarment);
-    promptPreviewText.textContent = promptObj.prompt;
+    const modelDef = models.realtime('lucy-vton-latest');
 
-    const proxyImageUrl = `${window.location.origin}/img?u=${encodeURIComponent(currentGarment.image)}`;
-
-    // Real-time ulanish
     realtimeSession = await decartClient.realtime.connect(localStream, {
-      model: 'lucy-vton-latest',
+      model: modelDef,
       mirror: 'auto',
       speed: 'fast',
       initialState: {
@@ -203,20 +216,25 @@ async function connectDecartAI() {
           text: promptObj.prompt,
           enhance: false
         },
-        referenceImageUrl: proxyImageUrl
+        image: currentGarment.image
       },
       onRemoteStream: (stream) => {
         remoteVideo.srcObject = stream;
         remoteVideo.style.display = 'block';
+        cameraVideo.style.display = 'none';
+        console.log('Decart jonli AI video oqimi ulandi!');
       }
     });
 
-    console.log('Decart AI VTON muvaffaqiyatli ulandi!');
+    promptPreviewText.textContent = `[${promptObj.region.toUpperCase()}] ${promptObj.prompt}`;
   } catch (err) {
     console.error('Decart AI ulanish xatosi:', err);
-    promptPreviewText.textContent = `AI xatosi: ${err.message || 'Qayta urinilmoqda'}`;
-    // Kredit tugagan bo'lsa serverga xabar
-    if (err.message && err.message.includes('credits')) {
+    promptPreviewText.textContent = `AI xatosi: ${err.message || 'Xatolik yuz berdi'}`;
+    cameraVideo.style.display = 'block';
+    remoteVideo.style.display = 'none';
+
+    // Agar kredit sabab bo'lsa zaxira kalitga o'tish
+    if (err.message && (err.message.includes('credits') || err.message.includes('insufficient'))) {
       await fetch('/api/key-exhausted', { method: 'POST' });
       await checkServerStatus();
     }
@@ -232,6 +250,7 @@ function disconnectDecartAI() {
   }
   remoteVideo.srcObject = null;
   remoteVideo.style.display = 'none';
+  cameraVideo.style.display = 'block';
 }
 
 /**
@@ -241,7 +260,7 @@ async function selectGarment(product) {
   currentGarment = product;
   resetInactivityTimer();
 
-  // Kartochka selektsiyasini yangilash
+  // Tanlangan kartochkani belgilash
   document.querySelectorAll('.product-card').forEach(card => {
     if (card.dataset.id === String(product.id)) {
       card.classList.add('selected');
@@ -259,11 +278,11 @@ async function selectGarment(product) {
   }
 
   if (currentMode === 'ai') {
-    await connectDecartAI();
+    await applyGarmentAI();
   } else {
     if (localEngine) {
       if (['Loufer', 'Barsofka', 'Krasofka', 'Tufli'].includes(product.subcategory)) {
-        alert('Diqqat: Oyoq kiyimlar lokal rejimda ko\'rsatilmaydi. Iltimos AI rejimga o\'ting.');
+        alert('Eslatma: Oyoq kiyimlar lokal rejimda ko\'rsatilmaydi. Iltimos AI rejimga o\'ting.');
       }
       await localEngine.setGarment(product);
     }
@@ -313,7 +332,9 @@ function resetInactivityTimer() {
  */
 function takeSnapshot() {
   const canvas = document.createElement('canvas');
-  const sourceVideo = (currentMode === 'ai' && remoteVideo.srcObject) ? remoteVideo : cameraVideo;
+  const sourceVideo = (currentMode === 'ai' && remoteVideo.style.display !== 'none' && remoteVideo.srcObject) 
+    ? remoteVideo 
+    : cameraVideo;
 
   if (!sourceVideo || sourceVideo.readyState < 2) {
     alert('Kamera kadrini olib bo\'lmadi');
@@ -327,7 +348,6 @@ function takeSnapshot() {
   if (currentMode === 'ai') {
     ctx.drawImage(sourceVideo, 0, 0, canvas.width, canvas.height);
   } else {
-    // Lokal rejimda video + tryon canvas
     ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
     ctx.drawImage(tryonCanvas, 0, 0, canvas.width, canvas.height);
   }
@@ -391,12 +411,13 @@ function renderProducts() {
   productsGrid.innerHTML = filtered.map(p => {
     const formattedPrice = new Intl.NumberFormat('uz-UZ').format(p.price) + ' so\'m';
     const isSelected = currentGarment && currentGarment.id === p.id;
-    const imgSrc = `/img?u=${encodeURIComponent(p.image)}`;
+    const directImg = p.image;
+    const proxyImg = `/img?u=${encodeURIComponent(p.image)}`;
 
     return `
       <div class="product-card ${isSelected ? 'selected' : ''}" data-id="${p.id}">
         <div class="card-img-wrapper">
-          <img class="card-img" src="${imgSrc}" alt="${p.name}" loading="lazy" />
+          <img class="card-img" src="${directImg}" alt="${p.name}" loading="lazy" onerror="this.onerror=null; this.src='${proxyImg}';" />
         </div>
         <div class="card-body">
           <div class="card-cat">${p.subcategory}</div>
