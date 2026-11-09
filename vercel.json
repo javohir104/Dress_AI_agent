@@ -1,0 +1,16 @@
+{
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "framework": null,
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/index.js" },
+    { "src": "/img(.*)", "dest": "/api/index.js" },
+    { "src": "/assets/(.*)", "dest": "/dist/assets/$1" },
+    { "src": "/catalog.json", "dest": "/dist/catalog.json" },
+    { "src": "/katalog.html", "dest": "/dist/katalog.html" },
+    { "src": "/p/(.*)", "dest": "/dist/p/$1" },
+    { "src": "/", "dest": "/dist/index.html" },
+    { "src": "/(.*)", "dest": "/api/index.js" }
+  ]
+}
